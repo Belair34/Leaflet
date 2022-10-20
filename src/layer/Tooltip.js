@@ -1,5 +1,5 @@
 import {DivOverlay} from './DivOverlay';
-import {toPoint} from '../geometry/Point';
+import {Point, toPoint} from '../geometry/Point';
 import {Map} from '../map/Map';
 import {Layer} from './Layer';
 import * as DomUtil from '../dom/DomUtil';
@@ -77,7 +77,26 @@ export var Tooltip = DivOverlay.extend({
 
 		// @option opacity: Number = 0.9
 		// Tooltip container opacity.
-		opacity: 0.9
+		opacity: 0.9,
+
+		// @option autoPan: Boolean = true
+		// Set it to `false` if you don't want the map to do panning animation
+		// to fit the opened popup.
+		autoPan: true,
+
+		// @option autoPanPaddingTopLeft: Point = null
+		// The margin between the popup and the top left corner of the map
+		// view after autopanning was performed.
+		autoPanPaddingTopLeft: [-20, -20],
+
+		// @option autoPanPaddingBottomRight: Point = null
+		// The margin between the popup and the bottom right corner of the map
+		// view after autopanning was performed.
+		autoPanPaddingBottomRight: [150, 150],
+
+		// @option autoPanPadding: Point = Point(5, 5)
+		// Equivalent of setting both top left and bottom right autopan padding to the same value.
+		autoPanPadding: null,
 	},
 
 	onAdd(map) {
@@ -141,9 +160,65 @@ export var Tooltip = DivOverlay.extend({
 		this._container.setAttribute('id', `leaflet-tooltip-${Util.stamp(this)}`);
 	},
 
-	_updateLayout() {},
+	_updateLayout() {
+		this._containerWidth = this._container.offsetWidth;
+	},
 
-	_adjustPan() {},
+	_adjustPan() {
+		if (!this.options.autoPan) { console.log('fak'); return; }
+		if (this._map._panAnim) { this._map._panAnim.stop(); }
+
+		// We can endlessly recurse if keepInView is set and the view resets.
+		// Let's guard against that by exiting early if we're responding to our own autopan.
+		if (this._autopanning) {
+			this._autopanning = false;
+			return;
+		}
+
+		var map = this._map,
+		    marginBottom = parseInt(DomUtil.getStyle(this._container, 'marginBottom'), 10) || 0,
+		    containerHeight = this._container.offsetHeight + marginBottom,
+		    containerWidth = this._containerWidth,
+		    layerPos = new Point(this._containerLeft, -containerHeight - this._containerBottom);
+
+		layerPos._add(DomUtil.getPosition(this._container));
+
+		var containerPos = map.layerPointToContainerPoint(layerPos),
+		    padding = toPoint(this.options.autoPanPadding),
+		    paddingTL = toPoint(this.options.autoPanPaddingTopLeft || padding),
+		    paddingBR = toPoint(this.options.autoPanPaddingBottomRight || padding),
+		    size = map.getSize(),
+		    dx = 0,
+		    dy = 0;
+
+		if (containerPos.x + containerWidth + paddingBR.x > size.x) { // right
+			dx = containerPos.x + containerWidth - size.x + paddingBR.x;
+		}
+		if (containerPos.x - dx - paddingTL.x < 0) { // left
+			dx = containerPos.x - paddingTL.x;
+		}
+		if (containerPos.y + containerHeight + paddingBR.y > size.y) { // bottom
+			dy = containerPos.y + containerHeight - size.y + paddingBR.y;
+		}
+		if (containerPos.y - dy - paddingTL.y < 0) { // top
+			dy = containerPos.y - paddingTL.y;
+		}
+
+		// @namespace Map
+		// @section Popup events
+		// @event autopanstart: Event
+		// Fired when the map starts autopanning when opening a popup.
+		if (dx || dy) {
+			// Track that we're autopanning, as this function will be re-ran on moveend
+			if (this.options.keepInView) {
+				this._autopanning = true;
+			}
+
+			map
+			    .fire('autopanstart')
+			    .panBy([dx, dy]);
+		}
+	},
 
 	_setPosition(pos) {
 		var subX, subY,
@@ -193,7 +268,10 @@ export var Tooltip = DivOverlay.extend({
 	},
 
 	_updatePosition() {
-		var pos = this._map.latLngToLayerPoint(this._latlng);
+		var pos = this._map.latLngToLayerPoint(this._latlng),
+		offset = toPoint(this.options.offset);
+		this._containerBottom = -offset.y;
+		this._containerLeft = -Math.round(this._containerWidth / 2) + offset.x;
 		this._setPosition(pos);
 	},
 
