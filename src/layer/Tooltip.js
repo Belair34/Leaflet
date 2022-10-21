@@ -82,24 +82,27 @@ export var Tooltip = DivOverlay.extend({
 		// @option autoPan: Boolean = true
 		// Set it to `false` if you don't want the map to do panning animation
 		// to fit the opened popup.
-		autoPan: true,
+		autoPan: false,
 
 		// @option autoPanPaddingTopLeft: Point = null
 		// The margin between the popup and the top left corner of the map
 		// view after autopanning was performed.
-		autoPanPaddingTopLeft: [-20, -20],
+		autoPanPaddingTopLeft: null,
 
 		// @option autoPanPaddingBottomRight: Point = null
 		// The margin between the popup and the bottom right corner of the map
 		// view after autopanning was performed.
-		autoPanPaddingBottomRight: [150, 150],
+		autoPanPaddingBottomRight: null,
 
 		// @option autoPanPadding: Point = Point(5, 5)
 		// Equivalent of setting both top left and bottom right autopan padding to the same value.
-		autoPanPadding: null,
+		autoPanPadding: [0, 0],
 	},
 
 	onAdd(map) {
+		// Used to make corrections to tooltip position based on CSS padding
+		this.tooltipPadding = 6;
+
 		DivOverlay.prototype.onAdd.call(this, map);
 		this.setOpacity(this.options.opacity);
 
@@ -161,6 +164,32 @@ export var Tooltip = DivOverlay.extend({
 	},
 
 	_updateLayout() {
+		var container = this._contentNode,
+		    style = container.style;
+
+		style.width = '';
+		style.whiteSpace = 'nowrap';
+
+		var width = container.offsetWidth;
+		width = Math.min(width, this.options.maxWidth);
+		width = Math.max(width, this.options.minWidth);
+
+		style.width = `${width + 1}px`;
+		style.whiteSpace = '';
+
+		style.height = '';
+
+		var height = container.offsetHeight,
+		    maxHeight = this.options.maxHeight,
+		    scrolledClass = 'leaflet-popup-scrolled';
+
+		if (maxHeight && height > maxHeight) {
+			style.height = `${maxHeight}px`;
+			DomUtil.addClass(container, scrolledClass);
+		} else {
+			DomUtil.removeClass(container, scrolledClass);
+		}
+
 		this._containerWidth = this._container.offsetWidth;
 	},
 
@@ -191,11 +220,13 @@ export var Tooltip = DivOverlay.extend({
 		    dx = 0,
 		    dy = 0;
 
+		console.log(paddingBR);
+		console.log(paddingTL);
 		if (containerPos.x + containerWidth + paddingBR.x > size.x) { // right
-			dx = containerPos.x + containerWidth - size.x + paddingBR.x;
+			dx = containerPos.x + containerWidth - size.x + paddingBR.x + this.tooltipPadding;
 		}
 		if (containerPos.x - dx - paddingTL.x < 0) { // left
-			dx = containerPos.x - paddingTL.x;
+			dx = containerPos.x - paddingTL.x - this.tooltipPadding;
 		}
 		if (containerPos.y + containerHeight + paddingBR.y > size.y) { // bottom
 			dy = containerPos.y + containerHeight - size.y + paddingBR.y;
@@ -229,35 +260,34 @@ export var Tooltip = DivOverlay.extend({
 		    direction = this.options.direction,
 		    tooltipWidth = container.offsetWidth,
 		    tooltipHeight = container.offsetHeight,
-		    offset = toPoint(this.options.offset),
 		    anchor = this._getAnchor();
 
 		if (direction === 'top') {
-			subX = tooltipWidth / 2;
-			subY = tooltipHeight;
-		} else if (direction === 'bottom') {
-			subX = tooltipWidth / 2;
-			subY = 0;
-		} else if (direction === 'center') {
-			subX = tooltipWidth / 2;
-			subY = tooltipHeight / 2;
-		} else if (direction === 'right') {
 			subX = 0;
-			subY = tooltipHeight / 2;
+			subY = 0 + this.tooltipPadding;
+		} else if (direction === 'bottom') {
+			subX = 0;
+			subY = -tooltipHeight - this.tooltipPadding;
+		} else if (direction === 'center') {
+			subX = 0;
+			subY = -tooltipHeight / 2;
+		} else if (direction === 'right') {
+			subX = -tooltipWidth / 2;
+			subY = -tooltipHeight / 2;
 		} else if (direction === 'left') {
-			subX = tooltipWidth;
-			subY = tooltipHeight / 2;
+			subX = tooltipWidth / 2;
+			subY = -tooltipHeight / 2;
 		} else if (tooltipPoint.x < centerPoint.x) {
 			direction = 'right';
-			subX = 0;
-			subY = tooltipHeight / 2;
+			subX = -tooltipWidth / 2;
+			subY = -tooltipHeight / 2;
 		} else {
 			direction = 'left';
-			subX = tooltipWidth + (offset.x + anchor.x) * 2;
-			subY = tooltipHeight / 2;
+			subX = tooltipWidth / 2 + anchor.x * 2;
+			subY = -tooltipHeight / 2;
 		}
 
-		pos = pos.subtract(toPoint(subX, subY, true)).add(offset).add(anchor);
+		pos = pos.subtract(toPoint(subX, subY, true)).add(anchor);
 
 		DomUtil.removeClass(container, 'leaflet-tooltip-right');
 		DomUtil.removeClass(container, 'leaflet-tooltip-left');
@@ -270,8 +300,12 @@ export var Tooltip = DivOverlay.extend({
 	_updatePosition() {
 		var pos = this._map.latLngToLayerPoint(this._latlng),
 		offset = toPoint(this.options.offset);
-		this._containerBottom = -offset.y;
-		this._containerLeft = -Math.round(this._containerWidth / 2) + offset.x;
+
+		var bottom = this._containerBottom = -offset.y;
+		var left = this._containerLeft = -Math.round(this._containerWidth / 2) + offset.x;
+
+		this._container.style.bottom = `${bottom}px`;
+		this._container.style.left = `${left}px`;
 		this._setPosition(pos);
 	},
 

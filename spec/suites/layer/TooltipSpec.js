@@ -535,4 +535,59 @@ describe('Tooltip', () => {
 		layer2.openTooltip();
 		expect(spy2.called).to.be(true);
 	});
+
+	describe.only("autoPan option should pan tooltip into visibility", () => {
+		// Helper function which calculates the offset of the map-container & tooltip-container in pixel
+		function gettooltipOffset(map, tooltip) {
+			var mapOffset = map._container.getBoundingClientRect().top;
+			var tooltipOffset = tooltip._container.getBoundingClientRect().top;
+			return tooltipOffset - mapOffset;
+		}
+
+		it("should not pan map to show tooltip content if autoPan is disabled", (done) => {
+			map.on('tooltipopen', (e) => {
+				var tooltipTopOffset = gettooltipOffset(map, e.tooltip);
+				expect(tooltipTopOffset).to.be.below(0, "The upper edge of the tooltip should not be visible");
+				done();
+			});
+			map.openTooltip('<div style="height: 400px;"></div>', [58.4, 37.6], {
+				autoPan: false
+			});
+		});
+
+		it("should pan map to show tooltip content if autoPan is enabled", (done) => {
+			map.on('tooltipopen', (e) => {
+				var tooltipTopOffset = gettooltipOffset(map, e.tooltip);
+				expect(tooltipTopOffset).to.be(10, "The upper edge of the tooltip have a padding of 10");
+				done();
+			});
+			map.openTooltip('<div style="height: 400px;"></div>', [58.4, 37.6], {
+				autoPan: true,
+				autoPanPadding: L.point(10, 10),
+				direction: 'top',
+				permanent: true
+			});
+		});
+
+		it("should pan map to show tooltip content if autoPan is enabled even when animating", (done) => {
+			map.on('tooltipopen', (e) => {
+				var tooltipTopOffset = gettooltipOffset(map, e.tooltip);
+				expect(tooltipTopOffset).to.be(10);
+				done();
+			});
+
+			map.panTo([55.8, 40.7], {
+				animate: true,
+				duration: 1
+			});
+
+			map.openTooltip('<div style="height: 400px;"></div>', [58.4, 37.6], {
+				autoPan: true,
+				autoPanPadding: L.point(10, 10),
+				direction: 'top',
+				permanent: true
+			});
+		});
+	});
+
 });
